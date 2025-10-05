@@ -171,6 +171,7 @@
             <div id="healthBar">
                 <div id="healthFill"></div>
             </div>
+            <div id="level">Level: 1</div>
             <div id="score">Score: 0</div>
             <div id="message">Use WASD or Arrow Keys to move, Space to ignite nearby torches</div>
         </div>
@@ -209,6 +210,12 @@
             CANVAS_HEIGHT: window.innerHeight
         };
 
+        // Level definitions
+        const LEVELS = [
+            { level: 1, numTorches: 8, healthDrainRate: 0.08, darknessDrainRate: 0.08 },
+            { level: 2, numTorches: 12, healthDrainRate: 0.06, darknessDrainRate: 0.06 }
+        ];
+
         let gameState = {
             canvas: null,
             ctx: null,
@@ -230,8 +237,54 @@
             hintActive: false,
             hintTarget: null,
             hintCooldown: 0,
-            hintCooldownTime: 10000
+            hintCooldownTime: 10000,
+            level: 1,
+            totalLevels: 2,
+            backgroundImage: null
         };
+
+        function applyLevelConfig(levelIndex) {
+            const cfg = LEVELS[levelIndex - 1];
+            if (!cfg) return;
+            GAME_CONFIG.NUM_TORCHES = cfg.numTorches;
+            GAME_CONFIG.HEALTH_DRAIN_RATE = cfg.healthDrainRate;
+            GAME_CONFIG.DARKNESS_DRAIN_RATE = cfg.darknessDrainRate;
+            const levelEl = document.getElementById('level');
+            if (levelEl) levelEl.textContent = `Level: ${cfg.level}`;
+        }
+
+        function generateTorches(numTorches) {
+            gameState.torches = [];
+            const margin = 100;
+            const minDistance = 200;
+            for (let i = 0; i < numTorches; i++) {
+                let attempts = 0;
+                let x, y;
+                let validPosition = false;
+                while (!validPosition && attempts < 50) {
+                    x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
+                    y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
+                    validPosition = true;
+                    for (let existingTorch of gameState.torches) {
+                        const distance = Math.sqrt((x - existingTorch.x) ** 2 + (y - existingTorch.y) ** 2);
+                        if (distance < minDistance) { validPosition = false; break; }
+                    }
+                    attempts++;
+                }
+                gameState.torches.push(new Torch(x, y));
+            }
+        }
+
+        function startLevel(levelIndex) {
+            gameState.level = levelIndex;
+            applyLevelConfig(levelIndex);
+            // Reset flame to full health and center
+            gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
+            gameState.flame.health = 100;
+            // Generate torches for this level
+            generateTorches(GAME_CONFIG.NUM_TORCHES);
+            showMessage(`Level ${levelIndex} started`);
+        }
 
         class Particle {
             constructor(x, y, vx, vy, life, color, size) {
@@ -627,38 +680,15 @@
             
             resizeCanvas();
             
-            gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
-            
-            gameState.torches = [];
-                const margin = 100;
-            const minDistance = 200;
-            
-            for (let i = 0; i < GAME_CONFIG.NUM_TORCHES; i++) {
-                let attempts = 0;
-                let x, y;
-                let validPosition = false;
-                
-                while (!validPosition && attempts < 50) {
-                    x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
-                    y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
-                    
-                    validPosition = true;
-                    for (let existingTorch of gameState.torches) {
-                        const distance = Math.sqrt((x - existingTorch.x) ** 2 + (y - existingTorch.y) ** 2);
-                        if (distance < minDistance) {
-                            validPosition = false;
-                            break;
-                        }
-                    }
-                    attempts++;
-                }
-                
-                gameState.torches.push(new Torch(x, y));
-            }
+            // Start at Level 1
+            startLevel(1);
             
             loadAudioFiles();
             loadNarration();
             loadHighScore();
+
+            // Load background image
+            loadBackgroundImage();
             gameState.canvas.addEventListener('click', (e) => {
                 if (!gameState.gameRunning) return;
                 
@@ -680,6 +710,18 @@
             setTimeout(() => {
                 playBackgroundMusic();
             }, 1000);
+        }
+
+        function loadBackgroundImage() {
+            const img = new Image();
+            img.onload = () => {
+                gameState.backgroundImage = img;
+            };
+            img.onerror = () => {
+                console.log('background.png not found, using gradient background');
+                gameState.backgroundImage = null;
+            };
+            img.src = './assets/background.png';
         }
 
         function loadAudioFiles() {
@@ -797,7 +839,11 @@
             // Check win condition (all torches lit)
             const allTorchesLit = gameState.torches.every(torch => torch.lit);
             if (allTorchesLit) {
-                gameOver("You have illuminated the darkness! Victory!");
+                if (gameState.level < gameState.totalLevels) {
+                    startLevel(gameState.level + 1);
+                } else {
+                    gameOver("You have illuminated the darkness! Victory!");
+                }
             }
         }
 
@@ -845,23 +891,33 @@
         }
 
         function drawBackground(ctx) {
-            // Placeholder background - replace with background.jpg
-            const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
-            gradient.addColorStop(0, '#1a0a0a');
-            gradient.addColorStop(0.5, '#0a0a1a');
-            gradient.addColorStop(1, '#000');
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
-            
-            // Add some atmospheric elements
-            ctx.fillStyle = 'rgba(100, 50, 0, 0.1)';
-            for (let i = 0; i < 20; i++) {
-                const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
-                const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
-                ctx.beginPath();
-                ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2);
-                ctx.fill();
+            if (gameState.backgroundImage && gameState.backgroundImage.complete) {
+                // Draw background.jpg stretched to canvas size
+                ctx.drawImage(
+                    gameState.backgroundImage,
+                    0,
+                    0,
+                    GAME_CONFIG.CANVAS_WIDTH,
+                    GAME_CONFIG.CANVAS_HEIGHT
+                );
+            } else {
+                // Fallback gradient background
+                const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
+                gradient.addColorStop(0, '#1a0a0a');
+                gradient.addColorStop(0.5, '#0a0a1a');
+                gradient.addColorStop(1, '#000');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+                
+                ctx.fillStyle = 'rgba(100, 50, 0, 0.1)';
+                for (let i = 0; i < 20; i++) {
+                    const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
+                    const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
+                    ctx.beginPath();
+                    ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
             }
         }
 
@@ -996,38 +1052,8 @@
             gameState.hintTarget = null;
             gameState.hintCooldown = 0;
             
-            // Reset flame
-            gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
-            
-            // Reset and randomize torches with proper spacing
-            const margin = 100;
-            const minDistance = 200;
-            
-            for (let i = 0; i < gameState.torches.length; i++) {
-                let attempts = 0;
-                let x, y;
-                let validPosition = false;
-                
-                while (!validPosition && attempts < 50) {
-                    x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
-                    y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
-                    
-                    // Check distance from other torches
-                    validPosition = true;
-                    for (let j = 0; j < i; j++) {
-                        const distance = Math.sqrt((x - gameState.torches[j].x) ** 2 + (y - gameState.torches[j].y) ** 2);
-                        if (distance < minDistance) {
-                            validPosition = false;
-                            break;
-                        }
-                    }
-                    attempts++;
-                }
-                
-                gameState.torches[i].lit = false;
-                gameState.torches[i].x = x;
-                gameState.torches[i].y = y;
-            }
+            // Reset to Level 1
+            startLevel(1);
             
             document.getElementById('gameOver').style.display = 'none';
             showRandomMessage();
