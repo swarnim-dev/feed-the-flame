@@ -10,7 +10,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-        }
+        } 
         
         body {
             font-family: 'Courier New', monospace;
@@ -177,11 +177,11 @@
         const GAME_CONFIG = {
             FLAME_SIZE: 20,
             FLAME_SPEED: 3,
-            HEALTH_DRAIN_RATE: 0.5,
+            HEALTH_DRAIN_RATE: 0.2,
             IGNITE_COST: 15,
             IGNITE_COOLDOWN: 1000,
             IGNITE_RANGE: 60,
-            DARKNESS_DRAIN_RATE: 0.3,
+            DARKNESS_DRAIN_RATE: 0.1,
             LIGHT_RADIUS: 80,
             NUM_TORCHES: 8,
             TORCH_SIZE: 24,
@@ -394,72 +394,198 @@
 
             draw(ctx) {
                 if (this.lit) {
-                    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, GAME_CONFIG.LIGHT_RADIUS);
-                    gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
-                    gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.6)');
-                    gradient.addColorStop(0.4, 'rgba(255, 150, 50, 0.4)');
-                    gradient.addColorStop(0.7, 'rgba(255, 100, 0, 0.2)');
-                    gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                    const time = Date.now() * 0.003;
+                    const pulse = Math.sin(time + this.x * 0.01) * 0.15 + 0.85;
+                    const flicker = Math.sin(time * 2.5 + this.y * 0.01) * 0.1 + 1;
                     
-                    ctx.fillStyle = gradient;
+                    // Bright but smaller glow system
+                    const outerGlow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, GAME_CONFIG.LIGHT_RADIUS);
+                    outerGlow.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+                    outerGlow.addColorStop(0.15, 'rgba(255, 255, 200, 0.95)');
+                    outerGlow.addColorStop(0.3, 'rgba(255, 200, 100, 0.9)');
+                    outerGlow.addColorStop(0.5, 'rgba(255, 150, 50, 0.8)');
+                    outerGlow.addColorStop(0.7, 'rgba(255, 100, 0, 0.6)');
+                    outerGlow.addColorStop(0.9, 'rgba(255, 50, 0, 0.3)');
+                    outerGlow.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                    
+                    ctx.fillStyle = outerGlow;
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, GAME_CONFIG.LIGHT_RADIUS, 0, Math.PI * 2);
+                    ctx.arc(this.x, this.y, GAME_CONFIG.LIGHT_RADIUS * pulse, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    const brightGradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 40);
-                    brightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
-                    brightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    // Bright inner core (smaller)
+                    const innerGlow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 50);
+                    innerGlow.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+                    innerGlow.addColorStop(0.2, 'rgba(255, 255, 200, 0.9)');
+                    innerGlow.addColorStop(0.5, 'rgba(255, 200, 100, 0.7)');
+                    innerGlow.addColorStop(0.8, 'rgba(255, 150, 50, 0.4)');
+                    innerGlow.addColorStop(1, 'rgba(255, 200, 100, 0)');
                     
-                    ctx.fillStyle = brightGradient;
+                    ctx.fillStyle = innerGlow;
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, 40, 0, Math.PI * 2);
+                    ctx.arc(this.x, this.y, 50 * pulse, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    ctx.fillStyle = '#8B4513';
-                    ctx.fillRect(this.x - 4, this.y, 8, 18);
+                    // Bright white core (smaller)
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 25 * pulse, 0, Math.PI * 2);
+                    ctx.fill();
                     
+                    // Enhanced torch base with better shading
+                    const baseGradient = ctx.createLinearGradient(this.x - 4, this.y, this.x + 4, this.y + 18);
+                    baseGradient.addColorStop(0, '#8B4513');
+                    baseGradient.addColorStop(0.3, '#A0522D');
+                    baseGradient.addColorStop(0.7, '#8B4513');
+                    baseGradient.addColorStop(1, '#654321');
+                    
+                    ctx.fillStyle = baseGradient;
+                    ctx.fillRect(this.x - 5, this.y, 10, 20);
+                    
+                    // Enhanced base outline with glow
                     ctx.strokeStyle = '#D2691E';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(this.x - 4, this.y, 8, 18);
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(this.x - 5, this.y, 10, 20);
+                    
+                    // Subtle inner highlight
+                    ctx.strokeStyle = '#F4A460';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(this.x - 4, this.y + 1, 8, 18);
                     
                     if (this.fireImage && this.fireImage.complete) {
+                        // Much brighter image rendering with intense glow
                         ctx.save();
+                        
+                        // Bright but smaller glow for image
+                        const imageGlow1 = ctx.createRadialGradient(this.x, this.y - 8, 0, this.x, this.y - 8, 20);
+                        imageGlow1.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+                        imageGlow1.addColorStop(0.3, 'rgba(255, 255, 200, 0.9)');
+                        imageGlow1.addColorStop(0.7, 'rgba(255, 200, 100, 0.6)');
+                        imageGlow1.addColorStop(1, 'rgba(255, 200, 100, 0)');
+                        
+                        ctx.fillStyle = imageGlow1;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - 8, 20 * flicker, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Bright core (smaller)
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - 8, 10 * flicker, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Draw the image with maximum brightness
                         ctx.globalAlpha = 1.0;
-                        ctx.drawImage(this.fireImage, this.x - 12, this.y - 20, 24, 24);
+                        ctx.drawImage(this.fireImage, this.x - 16, this.y - 24, 32, 32);
+                        
+                        // Bright white overlay for extra visibility
+                        ctx.globalAlpha = 0.6;
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(this.x - 16, this.y - 24, 32, 32);
+                        
+                        // Additional bright highlight
+                        ctx.globalAlpha = 0.4;
+                        ctx.fillStyle = '#ffff00';
+                        ctx.fillRect(this.x - 16, this.y - 24, 32, 32);
+                        
                         ctx.restore();
                     } else {
-                        const time = Date.now() * 0.01;
-                        const flicker = Math.sin(time + this.x * 0.01) * 0.2 + 1;
+                        // Enhanced default flame with better animation
+                        const flameTime = Date.now() * 0.008;
+                        const flameFlicker = Math.sin(flameTime + this.x * 0.01) * 0.25 + 1;
+                        const flamePulse = Math.sin(flameTime * 1.5 + this.y * 0.01) * 0.15 + 0.85;
                         
-                        ctx.fillStyle = '#ff6600';
+                        // Much brighter outer flame
+                        const flameGradient = ctx.createRadialGradient(this.x, this.y - 8, 0, this.x, this.y - 8, 20);
+                        flameGradient.addColorStop(0, '#ffaa00');
+                        flameGradient.addColorStop(0.3, '#ff8800');
+                        flameGradient.addColorStop(0.7, '#ff6600');
+                        flameGradient.addColorStop(1, '#ff4400');
+                        
+                        ctx.fillStyle = flameGradient;
                         ctx.beginPath();
-                        ctx.arc(this.x, this.y - 8, 14 * flicker, 0, Math.PI * 2);
+                        ctx.arc(this.x, this.y - 8, 20 * flameFlicker, 0, Math.PI * 2);
                         ctx.fill();
                         
-                        ctx.fillStyle = '#ffff00';
+                        // Bright middle flame layer
+                        const middleGradient = ctx.createRadialGradient(this.x, this.y - 8, 0, this.x, this.y - 8, 14);
+                        middleGradient.addColorStop(0, '#ffff00');
+                        middleGradient.addColorStop(0.4, '#ffaa00');
+                        middleGradient.addColorStop(0.8, '#ff8800');
+                        middleGradient.addColorStop(1, '#ff6600');
+                        
+                        ctx.fillStyle = middleGradient;
                         ctx.beginPath();
-                        ctx.arc(this.x, this.y - 8, 8 * flicker, 0, Math.PI * 2);
+                        ctx.arc(this.x, this.y - 8, 14 * flameFlicker, 0, Math.PI * 2);
                         ctx.fill();
+                        
+                        // Super bright white core
                         ctx.fillStyle = '#ffffff';
                         ctx.beginPath();
-                        ctx.arc(this.x, this.y - 8, 4 * flicker, 0, Math.PI * 2);
+                        ctx.arc(this.x, this.y - 8, 8 * flameFlicker, 0, Math.PI * 2);
                         ctx.fill();
+                        
+                        // Additional bright yellow core
+                        ctx.fillStyle = '#ffff00';
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - 8, 5 * flameFlicker, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Enhanced flame particles with better animation
                         ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
-                        for (let i = 0; i < 5; i++) {
-                            const offsetX = (Math.random() - 0.5) * 12;
-                            const offsetY = (Math.random() - 0.5) * 12;
+                        for (let i = 0; i < 8; i++) {
+                            const angle = (flameTime * 2 + i * 0.8) % (Math.PI * 2);
+                            const radius = 8 + Math.sin(flameTime * 3 + i) * 4;
+                            const offsetX = Math.cos(angle) * radius;
+                            const offsetY = Math.sin(angle) * radius - 8;
+                            const size = 2 + Math.sin(flameTime * 4 + i) * 1;
+                            
                             ctx.beginPath();
-                            ctx.arc(this.x + offsetX, this.y - 8 + offsetY, 3, 0, Math.PI * 2);
+                            ctx.arc(this.x + offsetX, this.y + offsetY, size, 0, Math.PI * 2);
                             ctx.fill();
                         }
                     }
                 } else if (this.visible) {
-                    ctx.fillStyle = '#4A4A4A';
-                    ctx.fillRect(this.x - 4, this.y, 8, 18);
+                    // Much more visible unlit torch with better contrast
+                    const unlitGradient = ctx.createLinearGradient(this.x - 6, this.y, this.x + 6, this.y + 22);
+                    unlitGradient.addColorStop(0, '#6A6A6A');
+                    unlitGradient.addColorStop(0.2, '#7A7A7A');
+                    unlitGradient.addColorStop(0.5, '#6A6A6A');
+                    unlitGradient.addColorStop(0.8, '#5A5A5A');
+                    unlitGradient.addColorStop(1, '#4A4A4A');
                     
-                    ctx.strokeStyle = '#666';
+                    ctx.fillStyle = unlitGradient;
+                    ctx.fillRect(this.x - 6, this.y, 12, 22);
+                    
+                    // Bright outline for better visibility
+                    ctx.strokeStyle = '#888';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(this.x - 6, this.y, 12, 22);
+                    
+                    // Additional bright inner outline
+                    ctx.strokeStyle = '#AAA';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(this.x - 5, this.y + 1, 10, 20);
+                    
+                    // Subtle glow effect for unlit torch
+                    const unlitGlow = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 15);
+                    unlitGlow.addColorStop(0, 'rgba(150, 150, 150, 0.3)');
+                    unlitGlow.addColorStop(0.5, 'rgba(100, 100, 100, 0.2)');
+                    unlitGlow.addColorStop(1, 'rgba(100, 100, 100, 0)');
+                    
+                    ctx.fillStyle = unlitGlow;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Add a small dark flame outline to show it's unlit
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(this.x - 2, this.y - 6, 4, 8);
+                    
+                    // Dark flame outline
+                    ctx.strokeStyle = '#444';
                     ctx.lineWidth = 1;
-                    ctx.strokeRect(this.x - 4, this.y, 8, 18);
+                    ctx.strokeRect(this.x - 2, this.y - 6, 4, 8);
                 }
             }
         }
