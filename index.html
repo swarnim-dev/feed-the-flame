@@ -10,7 +10,7 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-        } 
+        }
         
         body {
             font-family: 'Courier New', monospace;
@@ -110,6 +110,22 @@
             opacity: 0.5;
         }
         
+        #highScoreBox {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 215, 0, 0.9);
+            color: #000;
+            border: 2px solid #ffd700;
+            padding: 8px 12px;
+            font-size: 12px;
+            border-radius: 5px;
+            font-family: inherit;
+            z-index: 100;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        
         #gameOver {
             position: absolute;
             top: 50%;
@@ -165,6 +181,10 @@
         
         <button id="hintButton" onclick="useHint()">Get Hint</button>
         
+        <div id="highScoreBox">
+            High Score: <span id="highScoreValue">0</span>
+        </div>
+        
         <div id="gameOver">
             <h2 id="gameOverTitle">Game Over</h2>
             <p id="gameOverMessage">Your flame has been extinguished...</p>
@@ -176,8 +196,8 @@
     <script>
         const GAME_CONFIG = {
             FLAME_SIZE: 20,
-            FLAME_SPEED: 3,
-            HEALTH_DRAIN_RATE: 0.2,
+            FLAME_SPEED: 5,
+            HEALTH_DRAIN_RATE: 0.1,
             IGNITE_COST: 15,
             IGNITE_COOLDOWN: 1000,
             IGNITE_RANGE: 60,
@@ -195,6 +215,7 @@
             flame: null,
             torches: [],
             score: 0,
+            highScore: 0,
             gameRunning: true,
             lastIgniteTime: 0,
             narration: [],
@@ -609,8 +630,8 @@
             gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
             
             gameState.torches = [];
-            const margin = 100;
-            const minDistance = 150;
+                const margin = 100;
+            const minDistance = 200;
             
             for (let i = 0; i < GAME_CONFIG.NUM_TORCHES; i++) {
                 let attempts = 0;
@@ -637,6 +658,7 @@
             
             loadAudioFiles();
             loadNarration();
+            loadHighScore();
             gameState.canvas.addEventListener('click', (e) => {
                 if (!gameState.gameRunning) return;
                 
@@ -897,6 +919,9 @@
             // Update score
             document.getElementById('score').textContent = `Score: ${gameState.score}`;
             
+            // Update high score in the highlighted box
+            document.getElementById('highScoreValue').textContent = gameState.highScore;
+            
             // Update message
             const messageEl = document.getElementById('message');
             if (gameState.messageTimer > 0) {
@@ -944,7 +969,11 @@
 
         function gameOver(message) {
             gameState.gameRunning = false;
-            document.getElementById('gameOverTitle').textContent = 'Game Over';
+            saveHighScore();
+            
+            const isNewHighScore = gameState.score > 0 && gameState.score === gameState.highScore;
+            
+            document.getElementById('gameOverTitle').textContent = isNewHighScore ? 'New High Score!' : 'Game Over';
             document.getElementById('gameOverMessage').textContent = message;
             document.getElementById('finalScore').textContent = gameState.score;
             document.getElementById('gameOver').style.display = 'block';
@@ -972,7 +1001,7 @@
             
             // Reset and randomize torches with proper spacing
             const margin = 100;
-            const minDistance = 150;
+            const minDistance = 200;
             
             for (let i = 0; i < gameState.torches.length; i++) {
                 let attempts = 0;
@@ -1137,6 +1166,30 @@
             }
         }
 
+        function loadHighScore() {
+            const savedHighScore = localStorage.getItem('lastFlameHighScore');
+            if (savedHighScore) {
+                gameState.highScore = parseInt(savedHighScore);
+            }
+        }
+
+        function saveHighScore() {
+            if (gameState.score > gameState.highScore) {
+                gameState.highScore = gameState.score;
+                localStorage.setItem('lastFlameHighScore', gameState.highScore.toString());
+                updateHUD(); // Update the display immediately
+                
+                // Add visual effect for new high score
+                const highScoreBox = document.getElementById('highScoreBox');
+                highScoreBox.style.background = 'rgba(255, 255, 0, 0.9)';
+                highScoreBox.style.boxShadow = '0 0 20px rgba(255, 255, 0, 0.8)';
+                setTimeout(() => {
+                    highScoreBox.style.background = 'rgba(255, 215, 0, 0.9)';
+                    highScoreBox.style.boxShadow = '0 0 10px rgba(255, 215, 0, 0.5)';
+                }, 2000);
+            }
+        }
+
         function initAudio() {
             try {
                 gameState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1205,7 +1258,7 @@
             // Reposition torches randomly for new screen size with proper spacing
             if (gameState.torches.length > 0) {
                 const margin = 100;
-                const minDistance = 150;
+                const minDistance = 200;
                 
                 for (let i = 0; i < gameState.torches.length; i++) {
                     let attempts = 0;
