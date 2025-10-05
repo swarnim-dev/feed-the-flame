@@ -5,30 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Last Flame</title>
     <style>
-        /* ===========================================
-           ASSET REPLACEMENT GUIDE
-           ===========================================
-           
-           To replace assets, update these files in the /assets/ folder:
-           
-           IMAGES:
-           - background.jpg: Main background (1024x768 recommended)
-           - flame.png: Player flame sprite (32x32 recommended)
-           - torch_unlit.png: Unlit torch sprite (24x24 recommended)
-           - torch_lit.png: Lit torch sprite (24x24 recommended)
-           
-           AUDIO:
-           - ember_loop.mp3: Ambient background music
-           - spark.wav: Sound when igniting torch
-           - death.wav: Sound when flame dies
-           
-           TEXT:
-           - narration.json: Array of atmospheric messages
-           
-           To modify narration, edit the JSON file or replace with API data.
-           See loadNarration() function for implementation details.
-           
-           =========================================== */
         
         * {
             margin: 0;
@@ -198,34 +174,21 @@
     </div>
 
     <script>
-        // ===========================================
-        // GAME CONSTANTS - Easy to tune gameplay
-        // ===========================================
         const GAME_CONFIG = {
-            // Flame settings
             FLAME_SIZE: 20,
             FLAME_SPEED: 3,
-            HEALTH_DRAIN_RATE: 0.5, // per second
-            IGNITE_COST: 15, // health cost to ignite
-            IGNITE_COOLDOWN: 1000, // milliseconds
-            IGNITE_RANGE: 60, // pixels
-            
-            // Darkness settings
-            DARKNESS_DRAIN_RATE: 0.3, // per second when not near light
-            LIGHT_RADIUS: 80, // radius of light from torches
-            
-            // Torch settings
+            HEALTH_DRAIN_RATE: 0.5,
+            IGNITE_COST: 15,
+            IGNITE_COOLDOWN: 1000,
+            IGNITE_RANGE: 60,
+            DARKNESS_DRAIN_RATE: 0.3,
+            LIGHT_RADIUS: 80,
             NUM_TORCHES: 8,
             TORCH_SIZE: 24,
-            
-            // Game settings - will be set dynamically
             CANVAS_WIDTH: window.innerWidth,
             CANVAS_HEIGHT: window.innerHeight
         };
 
-        // ===========================================
-        // GAME STATE
-        // ===========================================
         let gameState = {
             canvas: null,
             ctx: null,
@@ -246,12 +209,9 @@
             hintActive: false,
             hintTarget: null,
             hintCooldown: 0,
-            hintCooldownTime: 10000 // 10 seconds
+            hintCooldownTime: 10000
         };
 
-        // ===========================================
-        // PARTICLE CLASS
-        // ===========================================
         class Particle {
             constructor(x, y, vx, vy, life, color, size) {
                 this.x = x;
@@ -268,7 +228,7 @@
                 this.x += this.vx;
                 this.y += this.vy;
                 this.life--;
-                this.vx *= 0.98; // Friction
+                this.vx *= 0.98;
                 this.vy *= 0.98;
             }
 
@@ -285,9 +245,6 @@
             }
         }
 
-        // ===========================================
-        // FLAME CLASS
-        // ===========================================
         class Flame {
             constructor(x, y) {
                 this.x = x;
@@ -301,18 +258,14 @@
             }
 
             update() {
-                // Apply movement
                 this.x += this.vx;
                 this.y += this.vy;
                 
-                // Keep flame in bounds
                 this.x = Math.max(this.radius, Math.min(GAME_CONFIG.CANVAS_WIDTH - this.radius, this.x));
                 this.y = Math.max(this.radius, Math.min(GAME_CONFIG.CANVAS_HEIGHT - this.radius, this.y));
                 
-                // Health drain over time
-                this.health -= GAME_CONFIG.HEALTH_DRAIN_RATE / 60; // 60 FPS
+                this.health -= GAME_CONFIG.HEALTH_DRAIN_RATE / 60;
                 
-                // Check if near any lit torch for light protection
                 let nearLight = false;
                 for (let torch of gameState.torches) {
                     if (torch.lit) {
@@ -324,12 +277,10 @@
                     }
                 }
                 
-                // Extra darkness drain if not near light
                 if (!nearLight) {
                     this.health -= GAME_CONFIG.DARKNESS_DRAIN_RATE / 60;
                 }
                 
-                // Clamp health
                 this.health = Math.max(0, Math.min(100, this.health));
             }
 
@@ -343,7 +294,6 @@
                     return false;
                 }
                 
-                // Find nearby unlit torches
                 let ignited = false;
                 for (let torch of gameState.torches) {
                     if (!torch.lit) {
@@ -362,7 +312,6 @@
                     showMessage("Torch ignited! +10 points");
                     playSound('spark');
                     
-                    // Add spark particles
                     for (let i = 0; i < 15; i++) {
                         const angle = (Math.PI * 2 * i) / 15;
                         const speed = 3 + Math.random() * 2;
@@ -380,12 +329,10 @@
             }
 
             draw(ctx) {
-                // Animated flickering effect
                 const time = Date.now() * 0.01;
                 const flicker = Math.sin(time + this.flickerOffset) * 0.1 + 1;
                 const currentRadius = this.radius * flicker;
                 
-                // Flame glow effect with animation
                 const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, currentRadius * 3);
                 gradient.addColorStop(0, `rgba(255, 100, 0, ${this.health / 100})`);
                 gradient.addColorStop(0.5, `rgba(255, 200, 0, ${this.health / 200})`);
@@ -396,21 +343,18 @@
                 ctx.arc(this.x, this.y, currentRadius * 3, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Main flame with flickering
                 const flameIntensity = this.health / 100;
                 ctx.fillStyle = `rgba(255, ${100 + this.health * 0.5}, 0, ${flameIntensity})`;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Inner bright core with animation
                 const coreFlicker = Math.sin(time * 1.5 + this.flickerOffset) * 0.2 + 1;
                 ctx.fillStyle = `rgba(255, 255, 200, 0.9)`;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, currentRadius * 0.6 * coreFlicker, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // Add some flame particles
                 if (Math.random() < 0.3) {
                     const particleX = this.x + (Math.random() - 0.5) * currentRadius;
                     const particleY = this.y + (Math.random() - 0.5) * currentRadius;
@@ -425,22 +369,18 @@
             }
         }
 
-        // ===========================================
-        // TORCH CLASS
-        // ===========================================
         class Torch {
             constructor(x, y) {
                 this.x = x;
                 this.y = y;
                 this.lit = false;
                 this.radius = GAME_CONFIG.TORCH_SIZE / 2;
-                this.visible = false; // Only visible when flame is near
-                this.fireImage = null; // For torch_lit.png image
+                this.visible = false;
+                this.fireImage = null;
                 this.loadFireImage();
             }
             
             loadFireImage() {
-                // Try to load torch_lit.png if it exists
                 this.fireImage = new Image();
                 this.fireImage.onload = () => {
                     console.log('Torch lit image loaded');
@@ -454,8 +394,6 @@
 
             draw(ctx) {
                 if (this.lit) {
-                    // Lit torches are ALWAYS visible and show fire animation
-                    // Enhanced light glow - much more visible and prominent
                     const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, GAME_CONFIG.LIGHT_RADIUS);
                     gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
                     gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.6)');
@@ -468,7 +406,6 @@
                     ctx.arc(this.x, this.y, GAME_CONFIG.LIGHT_RADIUS, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    // Additional bright core for extra visibility
                     const brightGradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 40);
                     brightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
                     brightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
@@ -478,46 +415,35 @@
                     ctx.arc(this.x, this.y, 40, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    // Torch base - more prominent lit version
                     ctx.fillStyle = '#8B4513';
                     ctx.fillRect(this.x - 4, this.y, 8, 18);
                     
-                    // Add a bright outline to the torch base
                     ctx.strokeStyle = '#D2691E';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(this.x - 4, this.y, 8, 18);
                     
-                    // Torch lit image or default flame - make it much more visible
                     if (this.fireImage && this.fireImage.complete) {
-                        // Draw torch_lit.png image with enhanced visibility
                         ctx.save();
-                        ctx.globalAlpha = 1.0; // Full opacity
+                        ctx.globalAlpha = 1.0;
                         ctx.drawImage(this.fireImage, this.x - 12, this.y - 20, 24, 24);
                         ctx.restore();
                     } else {
-                        // Enhanced default flame animation - much brighter
                         const time = Date.now() * 0.01;
                         const flicker = Math.sin(time + this.x * 0.01) * 0.2 + 1;
                         
-                        // Outer flame - bright orange
                         ctx.fillStyle = '#ff6600';
                         ctx.beginPath();
                         ctx.arc(this.x, this.y - 8, 14 * flicker, 0, Math.PI * 2);
                         ctx.fill();
                         
-                        // Inner flame core - bright yellow
                         ctx.fillStyle = '#ffff00';
                         ctx.beginPath();
                         ctx.arc(this.x, this.y - 8, 8 * flicker, 0, Math.PI * 2);
                         ctx.fill();
-                        
-                        // Bright white center
                         ctx.fillStyle = '#ffffff';
                         ctx.beginPath();
                         ctx.arc(this.x, this.y - 8, 4 * flicker, 0, Math.PI * 2);
                         ctx.fill();
-                        
-                        // Enhanced flame particles
                         ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
                         for (let i = 0; i < 5; i++) {
                             const offsetX = (Math.random() - 0.5) * 12;
@@ -528,11 +454,9 @@
                         }
                     }
                 } else if (this.visible) {
-                    // Unlit torch - only visible when flame is near
                     ctx.fillStyle = '#4A4A4A';
                     ctx.fillRect(this.x - 4, this.y, 8, 18);
                     
-                    // Subtle outline for visibility
                     ctx.strokeStyle = '#666';
                     ctx.lineWidth = 1;
                     ctx.strokeRect(this.x - 4, this.y, 8, 18);
@@ -540,9 +464,6 @@
             }
         }
 
-        // ===========================================
-        // CANVAS RESIZING
-        // ===========================================
         function resizeCanvas() {
             GAME_CONFIG.CANVAS_WIDTH = window.innerWidth;
             GAME_CONFIG.CANVAS_HEIGHT = window.innerHeight;
@@ -553,23 +474,17 @@
             }
         }
 
-        // ===========================================
-        // INITIALIZATION
-        // ===========================================
         function initGame() {
             gameState.canvas = document.getElementById('gameCanvas');
             gameState.ctx = gameState.canvas.getContext('2d');
             
-            // Set canvas size to full window
             resizeCanvas();
             
-            // Create flame at center
             gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
             
-            // Create torches in random positions with proper spacing
             gameState.torches = [];
             const margin = 100;
-            const minDistance = 150; // Minimum distance between torches
+            const minDistance = 150;
             
             for (let i = 0; i < GAME_CONFIG.NUM_TORCHES; i++) {
                 let attempts = 0;
@@ -580,7 +495,6 @@
                     x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
                     y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
                     
-                    // Check distance from existing torches
                     validPosition = true;
                     for (let existingTorch of gameState.torches) {
                         const distance = Math.sqrt((x - existingTorch.x) ** 2 + (y - existingTorch.y) ** 2);
@@ -595,13 +509,8 @@
                 gameState.torches.push(new Torch(x, y));
             }
             
-            // Load audio files
             loadAudioFiles();
-            
-            // Load narration
             loadNarration();
-            
-            // Set up mouse click-to-move
             gameState.canvas.addEventListener('click', (e) => {
                 if (!gameState.gameRunning) return;
                 
@@ -609,7 +518,6 @@
                 const x = (e.clientX - rect.left) * (GAME_CONFIG.CANVAS_WIDTH / rect.width);
                 const y = (e.clientY - rect.top) * (GAME_CONFIG.CANVAS_HEIGHT / rect.height);
                 
-                // Move flame towards click
                 const dx = x - gameState.flame.x;
                 const dy = y - gameState.flame.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
@@ -620,35 +528,21 @@
                 }
             });
             
-            // Start game loop
             gameLoop();
-            
-            // Start background music after a short delay
             setTimeout(() => {
                 playBackgroundMusic();
             }, 1000);
         }
 
-        // ===========================================
-        // AUDIO LOADING
-        // ===========================================
         function loadAudioFiles() {
-            // Load background music
             gameState.backgroundMusic = new Audio('./assets/ember_loop.mp3');
             gameState.backgroundMusic.loop = true;
             gameState.backgroundMusic.volume = 0.3;
-            
-            // Load sound effects
             gameState.sparkSound = new Audio('./assets/spark.wav');
             gameState.deathSound = new Audio('./assets/death.wav');
-            
-            // Initialize audio context
             initAudio();
         }
 
-        // ===========================================
-        // NARRATION SYSTEM
-        // ===========================================
         async function loadNarration() {
             try {
                 const response = await fetch('./assets/narration.json');
@@ -690,9 +584,6 @@
             gameState.messageTimer = 300; // 5 seconds at 60 FPS
         }
 
-        // ===========================================
-        // GAME LOOP
-        // ===========================================
         function gameLoop() {
             if (!gameState.gameRunning) return;
             
@@ -705,20 +596,16 @@
         function update() {
             if (!gameState.gameRunning) return;
             
-            // Update flame
             gameState.flame.update();
             
-            // Update torch visibility based on flame proximity
             for (let torch of gameState.torches) {
                 const distance = Math.sqrt(
                     (gameState.flame.x - torch.x) ** 2 + 
                     (gameState.flame.y - torch.y) ** 2
                 );
-                // Torches are visible when flame is within 120 pixels
                 torch.visible = distance < 120;
             }
             
-            // Update particles
             for (let i = gameState.particles.length - 1; i >= 0; i--) {
                 const particle = gameState.particles[i];
                 particle.update();
@@ -726,8 +613,6 @@
                     gameState.particles.splice(i, 1);
                 }
             }
-            
-            // Update background particles
             for (let i = gameState.backgroundParticles.length - 1; i >= 0; i--) {
                 const particle = gameState.backgroundParticles[i];
                 particle.update();
@@ -735,8 +620,6 @@
                     gameState.backgroundParticles.splice(i, 1);
                 }
             }
-            
-            // Add new background particles occasionally
             if (Math.random() < 0.02) {
                 const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
                 const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
@@ -748,26 +631,17 @@
                 ));
             }
             
-            // Update message timer
             if (gameState.messageTimer > 0) {
                 gameState.messageTimer--;
             }
-            
-            // Update hint system
             updateHintCooldown();
             updateHintButton();
-            
-            // Check if hint target is still valid
             if (gameState.hintActive && gameState.hintTarget && gameState.hintTarget.lit) {
                 gameState.hintActive = false;
                 gameState.hintTarget = null;
                 showMessage("Torch found! Hint deactivated.");
             }
-            
-            // Update HUD
             updateHUD();
-            
-            // Check game over conditions
             if (gameState.flame.health <= 0) {
                 gameOver("Your flame has been extinguished...");
             }
@@ -908,9 +782,6 @@
             }
         }
 
-        // ===========================================
-        // INPUT HANDLING
-        // ===========================================
         const keys = {};
         
         document.addEventListener('keydown', (e) => {
@@ -932,11 +803,6 @@
             keys[e.code] = false;
         });
         
-        // Mouse movement for optional click-to-move - will be set up in initGame()
-
-        // ===========================================
-        // MOVEMENT UPDATE
-        // ===========================================
         function updateMovement() {
             if (!gameState.gameRunning) return;
             
@@ -950,9 +816,6 @@
             if (keys['KeyD'] || keys['ArrowRight']) flame.vx = GAME_CONFIG.FLAME_SPEED;
         }
 
-        // ===========================================
-        // GAME OVER & RESTART
-        // ===========================================
         function gameOver(message) {
             gameState.gameRunning = false;
             document.getElementById('gameOverTitle').textContent = 'Game Over';
@@ -1018,9 +881,6 @@
             playBackgroundMusic();
         }
 
-        // ===========================================
-        // HINT SYSTEM
-        // ===========================================
         function useHint() {
             if (gameState.hintCooldown > 0 || !gameState.gameRunning) return;
             
@@ -1151,9 +1011,6 @@
             }
         }
 
-        // ===========================================
-        // AUDIO SYSTEM
-        // ===========================================
         function initAudio() {
             try {
                 gameState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1209,9 +1066,6 @@
             }
         }
 
-        // ===========================================
-        // START GAME
-        // ===========================================
         window.addEventListener('load', () => {
             initGame();
             
