@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Last Flame</title>
+    <style>
+        /* ===========================================
+           ASSET REPLACEMENT GUIDE
+           ===========================================
+           
+           To replace assets, update these files in the /assets/ folder:
+           
+           IMAGES:
+           - background.jpg: Main background (1024x768 recommended)
+           - flame.png: Player flame sprite (32x32 recommended)
+           - torch_unlit.png: Unlit torch sprite (24x24 recommended)
+           - torch_lit.png: Lit torch sprite (24x24 recommended)
+           
+           AUDIO:
+           - ember_loop.mp3: Ambient background music
+           - spark.wav: Sound when igniting torch
+           - death.wav: Sound when flame dies
+           
+           TEXT:
+           - narration.json: Array of atmospheric messages
+           
+           To modify narration, edit the JSON file or replace with API data.
+           See loadNarration() function for implementation details.
+           
+           =========================================== */
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+            user-select: none;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background: #000;
+            cursor: crosshair;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            font-size: 14px;
+            text-shadow: 0 0 10px #ff6600;
+        }
+        
+        #healthBar {
+            width: 200px;
+            height: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #ff6600;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        #healthFill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ff6600, #ffff00);
+            width: 100%;
+            transition: width 0.3s ease;
+        }
+        
+        #score {
+            margin-bottom: 5px;
+        }
+        
+        #message {
+            font-size: 12px;
+            color: #ffaa00;
+            max-width: 300px;
+            line-height: 1.4;
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-size: 12px;
+            color: #888;
+            z-index: 100;
+        }
+        
+        #hintButton {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 100, 0, 0.8);
+            color: #fff;
+            border: 2px solid #ff6600;
+            padding: 8px 16px;
+            font-size: 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+        
+        #hintButton:hover {
+            background: rgba(255, 100, 0, 1);
+            box-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
+        }
+        
+        #hintButton:disabled {
+            background: rgba(100, 100, 100, 0.5);
+            border-color: #666;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 200;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #ff6600;
+            display: none;
+        }
+        
+        #gameOver h2 {
+            color: #ff6600;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        #gameOver button {
+            background: #ff6600;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 10px;
+        }
+        
+        #gameOver button:hover {
+            background: #ff8800;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="hud">
+            <div id="healthBar">
+                <div id="healthFill"></div>
+            </div>
+            <div id="score">Score: 0</div>
+            <div id="message">Use WASD or Arrow Keys to move, Space to ignite nearby torches</div>
+        </div>
+        
+        <div id="instructions">
+            Controls: WASD/Arrow Keys = Move | Space = Ignite | R = Restart
+        </div>
+        
+        <button id="hintButton" onclick="useHint()">Get Hint</button>
+        
+        <div id="gameOver">
+            <h2 id="gameOverTitle">Game Over</h2>
+            <p id="gameOverMessage">Your flame has been extinguished...</p>
+            <p>Final Score: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        // ===========================================
+        // GAME CONSTANTS - Easy to tune gameplay
+        // ===========================================
+        const GAME_CONFIG = {
+            // Flame settings
+            FLAME_SIZE: 20,
+            FLAME_SPEED: 3,
+            HEALTH_DRAIN_RATE: 0.5, // per second
+            IGNITE_COST: 15, // health cost to ignite
+            IGNITE_COOLDOWN: 1000, // milliseconds
+            IGNITE_RANGE: 60, // pixels
+            
+            // Darkness settings
+            DARKNESS_DRAIN_RATE: 0.3, // per second when not near light
+            LIGHT_RADIUS: 80, // radius of light from torches
+            
+            // Torch settings
+            NUM_TORCHES: 8,
+            TORCH_SIZE: 24,
+            
+            // Game settings - will be set dynamically
+            CANVAS_WIDTH: window.innerWidth,
+            CANVAS_HEIGHT: window.innerHeight
+        };
+
+        // ===========================================
+        // GAME STATE
+        // ===========================================
+        let gameState = {
+            canvas: null,
+            ctx: null,
+            flame: null,
+            torches: [],
+            score: 0,
+            gameRunning: true,
+            lastIgniteTime: 0,
+            narration: [],
+            currentMessage: '',
+            messageTimer: 0,
+            particles: [],
+            backgroundParticles: [],
+            audioContext: null,
+            backgroundMusic: null,
+            sparkSound: null,
+            deathSound: null,
+            hintActive: false,
+            hintTarget: null,
+            hintCooldown: 0,
+            hintCooldownTime: 10000 // 10 seconds
+        };
+
+        // ===========================================
+        // PARTICLE CLASS
+        // ===========================================
+        class Particle {
+            constructor(x, y, vx, vy, life, color, size) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.life = life;
+                this.maxLife = life;
+                this.color = color;
+                this.size = size;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life--;
+                this.vx *= 0.98; // Friction
+                this.vy *= 0.98;
+            }
+
+            draw(ctx) {
+                const alpha = this.life / this.maxLife;
+                ctx.fillStyle = `${this.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * alpha, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // ===========================================
+        // FLAME CLASS
+        // ===========================================
+        class Flame {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.health = 100;
+                this.vx = 0;
+                this.vy = 0;
+                this.radius = GAME_CONFIG.FLAME_SIZE;
+                this.flickerOffset = Math.random() * Math.PI * 2;
+                this.flickerSpeed = 0.1;
+            }
+
+            update() {
+                // Apply movement
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Keep flame in bounds
+                this.x = Math.max(this.radius, Math.min(GAME_CONFIG.CANVAS_WIDTH - this.radius, this.x));
+                this.y = Math.max(this.radius, Math.min(GAME_CONFIG.CANVAS_HEIGHT - this.radius, this.y));
+                
+                // Health drain over time
+                this.health -= GAME_CONFIG.HEALTH_DRAIN_RATE / 60; // 60 FPS
+                
+                // Check if near any lit torch for light protection
+                let nearLight = false;
+                for (let torch of gameState.torches) {
+                    if (torch.lit) {
+                        const distance = Math.sqrt((this.x - torch.x) ** 2 + (this.y - torch.y) ** 2);
+                        if (distance < GAME_CONFIG.LIGHT_RADIUS) {
+                            nearLight = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Extra darkness drain if not near light
+                if (!nearLight) {
+                    this.health -= GAME_CONFIG.DARKNESS_DRAIN_RATE / 60;
+                }
+                
+                // Clamp health
+                this.health = Math.max(0, Math.min(100, this.health));
+            }
+
+            ignite() {
+                const now = Date.now();
+                if (now - gameState.lastIgniteTime < GAME_CONFIG.IGNITE_COOLDOWN) {
+                    return false;
+                }
+                
+                if (this.health < GAME_CONFIG.IGNITE_COST) {
+                    return false;
+                }
+                
+                // Find nearby unlit torches
+                let ignited = false;
+                for (let torch of gameState.torches) {
+                    if (!torch.lit) {
+                        const distance = Math.sqrt((this.x - torch.x) ** 2 + (this.y - torch.y) ** 2);
+                        if (distance < GAME_CONFIG.IGNITE_RANGE) {
+                            torch.lit = true;
+                            gameState.score += 10;
+                            ignited = true;
+                        }
+                    }
+                }
+                
+                if (ignited) {
+                    this.health -= GAME_CONFIG.IGNITE_COST;
+                    gameState.lastIgniteTime = now;
+                    showMessage("Torch ignited! +10 points");
+                    playSound('spark');
+                    
+                    // Add spark particles
+                    for (let i = 0; i < 15; i++) {
+                        const angle = (Math.PI * 2 * i) / 15;
+                        const speed = 3 + Math.random() * 2;
+                        const vx = Math.cos(angle) * speed;
+                        const vy = Math.sin(angle) * speed;
+                        
+                        gameState.particles.push(new Particle(
+                            this.x, this.y, vx, vy,
+                            40, '#ffff00', 3
+                        ));
+                    }
+                }
+                
+                return ignited;
+            }
+
+            draw(ctx) {
+                // Animated flickering effect
+                const time = Date.now() * 0.01;
+                const flicker = Math.sin(time + this.flickerOffset) * 0.1 + 1;
+                const currentRadius = this.radius * flicker;
+                
+                // Flame glow effect with animation
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, currentRadius * 3);
+                gradient.addColorStop(0, `rgba(255, 100, 0, ${this.health / 100})`);
+                gradient.addColorStop(0.5, `rgba(255, 200, 0, ${this.health / 200})`);
+                gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius * 3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Main flame with flickering
+                const flameIntensity = this.health / 100;
+                ctx.fillStyle = `rgba(255, ${100 + this.health * 0.5}, 0, ${flameIntensity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Inner bright core with animation
+                const coreFlicker = Math.sin(time * 1.5 + this.flickerOffset) * 0.2 + 1;
+                ctx.fillStyle = `rgba(255, 255, 200, 0.9)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, currentRadius * 0.6 * coreFlicker, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Add some flame particles
+                if (Math.random() < 0.3) {
+                    const particleX = this.x + (Math.random() - 0.5) * currentRadius;
+                    const particleY = this.y + (Math.random() - 0.5) * currentRadius;
+                    const particleVx = (Math.random() - 0.5) * 2;
+                    const particleVy = -Math.random() * 3 - 1;
+                    
+                    gameState.particles.push(new Particle(
+                        particleX, particleY, particleVx, particleVy,
+                        30, '#ff6600', 2
+                    ));
+                }
+            }
+        }
+
+        // ===========================================
+        // TORCH CLASS
+        // ===========================================
+        class Torch {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.lit = false;
+                this.radius = GAME_CONFIG.TORCH_SIZE / 2;
+                this.visible = false; // Only visible when flame is near
+                this.fireImage = null; // For torch_lit.png image
+                this.loadFireImage();
+            }
+            
+            loadFireImage() {
+                // Try to load torch_lit.png if it exists
+                this.fireImage = new Image();
+                this.fireImage.onload = () => {
+                    console.log('Torch lit image loaded');
+                };
+                this.fireImage.onerror = () => {
+                    console.log('Torch lit image not found, using default flame');
+                    this.fireImage = null;
+                };
+                this.fireImage.src = './assets/torch_lit.png';
+            }
+
+            draw(ctx) {
+                if (this.lit) {
+                    // Lit torches are ALWAYS visible and show fire animation
+                    // Enhanced light glow - much more visible and prominent
+                    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, GAME_CONFIG.LIGHT_RADIUS);
+                    gradient.addColorStop(0, 'rgba(255, 255, 200, 0.8)');
+                    gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.6)');
+                    gradient.addColorStop(0.4, 'rgba(255, 150, 50, 0.4)');
+                    gradient.addColorStop(0.7, 'rgba(255, 100, 0, 0.2)');
+                    gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, GAME_CONFIG.LIGHT_RADIUS, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Additional bright core for extra visibility
+                    const brightGradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 40);
+                    brightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+                    brightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    
+                    ctx.fillStyle = brightGradient;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 40, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Torch base - more prominent lit version
+                    ctx.fillStyle = '#8B4513';
+                    ctx.fillRect(this.x - 4, this.y, 8, 18);
+                    
+                    // Add a bright outline to the torch base
+                    ctx.strokeStyle = '#D2691E';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(this.x - 4, this.y, 8, 18);
+                    
+                    // Torch lit image or default flame - make it much more visible
+                    if (this.fireImage && this.fireImage.complete) {
+                        // Draw torch_lit.png image with enhanced visibility
+                        ctx.save();
+                        ctx.globalAlpha = 1.0; // Full opacity
+                        ctx.drawImage(this.fireImage, this.x - 12, this.y - 20, 24, 24);
+                        ctx.restore();
+                    } else {
+                        // Enhanced default flame animation - much brighter
+                        const time = Date.now() * 0.01;
+                        const flicker = Math.sin(time + this.x * 0.01) * 0.2 + 1;
+                        
+                        // Outer flame - bright orange
+                        ctx.fillStyle = '#ff6600';
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - 8, 14 * flicker, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Inner flame core - bright yellow
+                        ctx.fillStyle = '#ffff00';
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - 8, 8 * flicker, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Bright white center
+                        ctx.fillStyle = '#ffffff';
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y - 8, 4 * flicker, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // Enhanced flame particles
+                        ctx.fillStyle = 'rgba(255, 255, 200, 0.9)';
+                        for (let i = 0; i < 5; i++) {
+                            const offsetX = (Math.random() - 0.5) * 12;
+                            const offsetY = (Math.random() - 0.5) * 12;
+                            ctx.beginPath();
+                            ctx.arc(this.x + offsetX, this.y - 8 + offsetY, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                } else if (this.visible) {
+                    // Unlit torch - only visible when flame is near
+                    ctx.fillStyle = '#4A4A4A';
+                    ctx.fillRect(this.x - 4, this.y, 8, 18);
+                    
+                    // Subtle outline for visibility
+                    ctx.strokeStyle = '#666';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(this.x - 4, this.y, 8, 18);
+                }
+            }
+        }
+
+        // ===========================================
+        // CANVAS RESIZING
+        // ===========================================
+        function resizeCanvas() {
+            GAME_CONFIG.CANVAS_WIDTH = window.innerWidth;
+            GAME_CONFIG.CANVAS_HEIGHT = window.innerHeight;
+            
+            if (gameState.canvas) {
+                gameState.canvas.width = GAME_CONFIG.CANVAS_WIDTH;
+                gameState.canvas.height = GAME_CONFIG.CANVAS_HEIGHT;
+            }
+        }
+
+        // ===========================================
+        // INITIALIZATION
+        // ===========================================
+        function initGame() {
+            gameState.canvas = document.getElementById('gameCanvas');
+            gameState.ctx = gameState.canvas.getContext('2d');
+            
+            // Set canvas size to full window
+            resizeCanvas();
+            
+            // Create flame at center
+            gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
+            
+            // Create torches in random positions with proper spacing
+            gameState.torches = [];
+            const margin = 100;
+            const minDistance = 150; // Minimum distance between torches
+            
+            for (let i = 0; i < GAME_CONFIG.NUM_TORCHES; i++) {
+                let attempts = 0;
+                let x, y;
+                let validPosition = false;
+                
+                while (!validPosition && attempts < 50) {
+                    x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
+                    y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
+                    
+                    // Check distance from existing torches
+                    validPosition = true;
+                    for (let existingTorch of gameState.torches) {
+                        const distance = Math.sqrt((x - existingTorch.x) ** 2 + (y - existingTorch.y) ** 2);
+                        if (distance < minDistance) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+                
+                gameState.torches.push(new Torch(x, y));
+            }
+            
+            // Load audio files
+            loadAudioFiles();
+            
+            // Load narration
+            loadNarration();
+            
+            // Set up mouse click-to-move
+            gameState.canvas.addEventListener('click', (e) => {
+                if (!gameState.gameRunning) return;
+                
+                const rect = gameState.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (GAME_CONFIG.CANVAS_WIDTH / rect.width);
+                const y = (e.clientY - rect.top) * (GAME_CONFIG.CANVAS_HEIGHT / rect.height);
+                
+                // Move flame towards click
+                const dx = x - gameState.flame.x;
+                const dy = y - gameState.flame.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    gameState.flame.vx = (dx / distance) * GAME_CONFIG.FLAME_SPEED;
+                    gameState.flame.vy = (dy / distance) * GAME_CONFIG.FLAME_SPEED;
+                }
+            });
+            
+            // Start game loop
+            gameLoop();
+            
+            // Start background music after a short delay
+            setTimeout(() => {
+                playBackgroundMusic();
+            }, 1000);
+        }
+
+        // ===========================================
+        // AUDIO LOADING
+        // ===========================================
+        function loadAudioFiles() {
+            // Load background music
+            gameState.backgroundMusic = new Audio('./assets/ember_loop.mp3');
+            gameState.backgroundMusic.loop = true;
+            gameState.backgroundMusic.volume = 0.3;
+            
+            // Load sound effects
+            gameState.sparkSound = new Audio('./assets/spark.wav');
+            gameState.deathSound = new Audio('./assets/death.wav');
+            
+            // Initialize audio context
+            initAudio();
+        }
+
+        // ===========================================
+        // NARRATION SYSTEM
+        // ===========================================
+        async function loadNarration() {
+            try {
+                const response = await fetch('./assets/narration.json');
+                gameState.narration = await response.json();
+                showRandomMessage();
+            } catch (error) {
+                console.log('Using default narration');
+                gameState.narration = [
+                    "The darkness whispers of forgotten flames...",
+                    "Each torch you light costs a piece of yourself.",
+                    "In the void, even light must be earned.",
+                    "Your flame flickers with determination.",
+                    "The shadows grow longer with each passing moment.",
+                    "Hope burns brightest in the darkest places.",
+                    "Every spark is a small victory against the night.",
+                    "The darkness remembers what light forgets.",
+                    "Your courage illuminates the path forward.",
+                    "In the end, we are all just temporary flames.",
+                    "The last light before eternal darkness.",
+                    "Burning bright, burning brief, burning true."
+                ];
+                showRandomMessage();
+            }
+        }
+
+        function showRandomMessage() {
+            if (gameState.narration.length > 0) {
+                const message = gameState.narration[Math.floor(Math.random() * gameState.narration.length)];
+                // Replace placeholders
+                const processedMessage = message
+                    .replace('{health}', Math.round(gameState.flame.health))
+                    .replace('{score}', gameState.score);
+                showMessage(processedMessage);
+            }
+        }
+
+        function showMessage(text) {
+            gameState.currentMessage = text;
+            gameState.messageTimer = 300; // 5 seconds at 60 FPS
+        }
+
+        // ===========================================
+        // GAME LOOP
+        // ===========================================
+        function gameLoop() {
+            if (!gameState.gameRunning) return;
+            
+            update();
+            draw();
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update() {
+            if (!gameState.gameRunning) return;
+            
+            // Update flame
+            gameState.flame.update();
+            
+            // Update torch visibility based on flame proximity
+            for (let torch of gameState.torches) {
+                const distance = Math.sqrt(
+                    (gameState.flame.x - torch.x) ** 2 + 
+                    (gameState.flame.y - torch.y) ** 2
+                );
+                // Torches are visible when flame is within 120 pixels
+                torch.visible = distance < 120;
+            }
+            
+            // Update particles
+            for (let i = gameState.particles.length - 1; i >= 0; i--) {
+                const particle = gameState.particles[i];
+                particle.update();
+                if (particle.isDead()) {
+                    gameState.particles.splice(i, 1);
+                }
+            }
+            
+            // Update background particles
+            for (let i = gameState.backgroundParticles.length - 1; i >= 0; i--) {
+                const particle = gameState.backgroundParticles[i];
+                particle.update();
+                if (particle.isDead()) {
+                    gameState.backgroundParticles.splice(i, 1);
+                }
+            }
+            
+            // Add new background particles occasionally
+            if (Math.random() < 0.02) {
+                const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
+                const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
+                const vx = (Math.random() - 0.5) * 0.5;
+                const vy = (Math.random() - 0.5) * 0.5;
+                
+                gameState.backgroundParticles.push(new Particle(
+                    x, y, vx, vy, 300, '#333333', 1
+                ));
+            }
+            
+            // Update message timer
+            if (gameState.messageTimer > 0) {
+                gameState.messageTimer--;
+            }
+            
+            // Update hint system
+            updateHintCooldown();
+            updateHintButton();
+            
+            // Check if hint target is still valid
+            if (gameState.hintActive && gameState.hintTarget && gameState.hintTarget.lit) {
+                gameState.hintActive = false;
+                gameState.hintTarget = null;
+                showMessage("Torch found! Hint deactivated.");
+            }
+            
+            // Update HUD
+            updateHUD();
+            
+            // Check game over conditions
+            if (gameState.flame.health <= 0) {
+                gameOver("Your flame has been extinguished...");
+            }
+            
+            // Check win condition (all torches lit)
+            const allTorchesLit = gameState.torches.every(torch => torch.lit);
+            if (allTorchesLit) {
+                gameOver("You have illuminated the darkness! Victory!");
+            }
+        }
+
+        function draw() {
+            const ctx = gameState.ctx;
+            
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+            
+            // Draw background (placeholder for image)
+            drawBackground(ctx);
+            
+            // Draw background particles
+            for (let particle of gameState.backgroundParticles) {
+                particle.draw(ctx);
+            }
+            
+            // Draw torches
+            for (let torch of gameState.torches) {
+                torch.draw(ctx);
+            }
+            
+            // Draw flame
+            gameState.flame.draw(ctx);
+            
+            // Draw particles
+            for (let particle of gameState.particles) {
+                particle.draw(ctx);
+            }
+            
+            // Draw darkness overlay
+            drawDarknessOverlay(ctx);
+            
+            // Draw flame again on top of darkness to ensure visibility
+            gameState.flame.draw(ctx);
+            
+            // Draw particles again on top of darkness
+            for (let particle of gameState.particles) {
+                particle.draw(ctx);
+            }
+            
+            // Draw hint arrow
+            drawHintArrow(ctx);
+        }
+
+        function drawBackground(ctx) {
+            // Placeholder background - replace with background.jpg
+            const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
+            gradient.addColorStop(0, '#1a0a0a');
+            gradient.addColorStop(0.5, '#0a0a1a');
+            gradient.addColorStop(1, '#000');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+            
+            // Add some atmospheric elements
+            ctx.fillStyle = 'rgba(100, 50, 0, 0.1)';
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
+                const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawDarknessOverlay(ctx) {
+            // Create darkness mask
+            ctx.save();
+            ctx.globalCompositeOperation = 'source-over';
+            
+            // Dark overlay - reduced opacity so flame is more visible
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+            
+            // Punch holes for light sources
+            ctx.globalCompositeOperation = 'destination-out';
+            
+            // Flame light - larger radius for better visibility
+            const flameGradient = ctx.createRadialGradient(
+                gameState.flame.x, gameState.flame.y, 0,
+                gameState.flame.x, gameState.flame.y, gameState.flame.radius * 4
+            );
+            flameGradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+            flameGradient.addColorStop(0.8, 'rgba(0, 0, 0, 0.8)');
+            flameGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            
+            ctx.fillStyle = flameGradient;
+            ctx.beginPath();
+            ctx.arc(gameState.flame.x, gameState.flame.y, gameState.flame.radius * 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Lit torch lights
+            for (let torch of gameState.torches) {
+                if (torch.lit) {
+                    const torchGradient = ctx.createRadialGradient(
+                        torch.x, torch.y, 0,
+                        torch.x, torch.y, GAME_CONFIG.LIGHT_RADIUS
+                    );
+                    torchGradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+                    torchGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    
+                    ctx.fillStyle = torchGradient;
+                    ctx.beginPath();
+                    ctx.arc(torch.x, torch.y, GAME_CONFIG.LIGHT_RADIUS, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        function updateHUD() {
+            // Update health bar
+            const healthPercent = (gameState.flame.health / 100) * 100;
+            document.getElementById('healthFill').style.width = healthPercent + '%';
+            
+            // Update score
+            document.getElementById('score').textContent = `Score: ${gameState.score}`;
+            
+            // Update message
+            const messageEl = document.getElementById('message');
+            if (gameState.messageTimer > 0) {
+                messageEl.textContent = gameState.currentMessage;
+                messageEl.style.opacity = '1';
+            } else {
+                messageEl.style.opacity = '0.5';
+                messageEl.textContent = 'Use WASD or Arrow Keys to move, Space to ignite nearby torches';
+            }
+        }
+
+        // ===========================================
+        // INPUT HANDLING
+        // ===========================================
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState.gameRunning) {
+                    gameState.flame.ignite();
+                }
+            }
+            
+            if (e.code === 'KeyR') {
+                restartGame();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+        
+        // Mouse movement for optional click-to-move - will be set up in initGame()
+
+        // ===========================================
+        // MOVEMENT UPDATE
+        // ===========================================
+        function updateMovement() {
+            if (!gameState.gameRunning) return;
+            
+            const flame = gameState.flame;
+            flame.vx = 0;
+            flame.vy = 0;
+            
+            if (keys['KeyW'] || keys['ArrowUp']) flame.vy = -GAME_CONFIG.FLAME_SPEED;
+            if (keys['KeyS'] || keys['ArrowDown']) flame.vy = GAME_CONFIG.FLAME_SPEED;
+            if (keys['KeyA'] || keys['ArrowLeft']) flame.vx = -GAME_CONFIG.FLAME_SPEED;
+            if (keys['KeyD'] || keys['ArrowRight']) flame.vx = GAME_CONFIG.FLAME_SPEED;
+        }
+
+        // ===========================================
+        // GAME OVER & RESTART
+        // ===========================================
+        function gameOver(message) {
+            gameState.gameRunning = false;
+            document.getElementById('gameOverTitle').textContent = 'Game Over';
+            document.getElementById('gameOverMessage').textContent = message;
+            document.getElementById('finalScore').textContent = gameState.score;
+            document.getElementById('gameOver').style.display = 'block';
+            playSound('death');
+        }
+
+        function restartGame() {
+            gameState.gameRunning = true;
+            gameState.score = 0;
+            gameState.lastIgniteTime = 0;
+            gameState.currentMessage = '';
+            gameState.messageTimer = 0;
+            
+            // Clear all particles
+            gameState.particles = [];
+            gameState.backgroundParticles = [];
+            
+            // Reset hint system
+            gameState.hintActive = false;
+            gameState.hintTarget = null;
+            gameState.hintCooldown = 0;
+            
+            // Reset flame
+            gameState.flame = new Flame(GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT / 2);
+            
+            // Reset and randomize torches with proper spacing
+            const margin = 100;
+            const minDistance = 150;
+            
+            for (let i = 0; i < gameState.torches.length; i++) {
+                let attempts = 0;
+                let x, y;
+                let validPosition = false;
+                
+                while (!validPosition && attempts < 50) {
+                    x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
+                    y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
+                    
+                    // Check distance from other torches
+                    validPosition = true;
+                    for (let j = 0; j < i; j++) {
+                        const distance = Math.sqrt((x - gameState.torches[j].x) ** 2 + (y - gameState.torches[j].y) ** 2);
+                        if (distance < minDistance) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+                
+                gameState.torches[i].lit = false;
+                gameState.torches[i].x = x;
+                gameState.torches[i].y = y;
+            }
+            
+            document.getElementById('gameOver').style.display = 'none';
+            showRandomMessage();
+            
+            // Restart background music
+            playBackgroundMusic();
+        }
+
+        // ===========================================
+        // HINT SYSTEM
+        // ===========================================
+        function useHint() {
+            if (gameState.hintCooldown > 0 || !gameState.gameRunning) return;
+            
+            // Find the nearest unlit torch
+            let nearestTorch = null;
+            let nearestDistance = Infinity;
+            
+            for (let torch of gameState.torches) {
+                if (!torch.lit) {
+                    const distance = Math.sqrt(
+                        (gameState.flame.x - torch.x) ** 2 + 
+                        (gameState.flame.y - torch.y) ** 2
+                    );
+                    if (distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestTorch = torch;
+                    }
+                }
+            }
+            
+            if (nearestTorch) {
+                gameState.hintActive = true;
+                gameState.hintTarget = nearestTorch;
+                gameState.hintCooldown = gameState.hintCooldownTime;
+                showMessage("Hint: Follow the arrows to the nearest torch!");
+            } else {
+                showMessage("All torches are already lit!");
+            }
+        }
+        
+        function updateHintCooldown() {
+            if (gameState.hintCooldown > 0) {
+                gameState.hintCooldown -= 16; // Assuming 60 FPS
+                if (gameState.hintCooldown <= 0) {
+                    gameState.hintCooldown = 0;
+                }
+            }
+        }
+        
+        function drawHintArrow(ctx) {
+            if (!gameState.hintActive || !gameState.hintTarget) return;
+            
+            const target = gameState.hintTarget;
+            const flame = gameState.flame;
+            
+            // Calculate direction to target
+            const dx = target.x - flame.x;
+            const dy = target.y - flame.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 50) {
+                // Target is very close, hide arrow
+                gameState.hintActive = false;
+                gameState.hintTarget = null;
+                return;
+            }
+            
+            // Normalize direction
+            const dirX = dx / distance;
+            const dirY = dy / distance;
+            
+            // Position arrow at edge of screen in direction of target
+            const arrowDistance = 80;
+            const arrowX = flame.x + dirX * arrowDistance;
+            const arrowY = flame.y + dirY * arrowDistance;
+            
+            // Keep arrow on screen
+            const clampedX = Math.max(30, Math.min(GAME_CONFIG.CANVAS_WIDTH - 30, arrowX));
+            const clampedY = Math.max(30, Math.min(GAME_CONFIG.CANVAS_HEIGHT - 30, arrowY));
+            
+            // Draw pulsing arrow
+            const time = Date.now() * 0.005;
+            const pulse = Math.sin(time) * 0.3 + 0.7;
+            const alpha = pulse;
+            
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            
+            // Arrow glow
+            const gradient = ctx.createRadialGradient(clampedX, clampedY, 0, clampedX, clampedY, 25);
+            gradient.addColorStop(0, 'rgba(255, 255, 0, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 200, 0, 0.4)');
+            gradient.addColorStop(1, 'rgba(255, 200, 0, 0)');
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(clampedX, clampedY, 25, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Arrow shape
+            ctx.fillStyle = '#ffff00';
+            ctx.strokeStyle = '#ff6600';
+            ctx.lineWidth = 3;
+            
+            const arrowSize = 15;
+            const angle = Math.atan2(dirY, dirX);
+            
+            ctx.translate(clampedX, clampedY);
+            ctx.rotate(angle);
+            
+            ctx.beginPath();
+            ctx.moveTo(arrowSize, 0);
+            ctx.lineTo(-arrowSize, -arrowSize * 0.6);
+            ctx.lineTo(-arrowSize * 0.3, 0);
+            ctx.lineTo(-arrowSize, arrowSize * 0.6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.restore();
+            
+            // Draw distance text
+            ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+            ctx.font = '12px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${Math.round(distance)}px`, clampedX, clampedY + 35);
+        }
+        
+        function updateHintButton() {
+            const button = document.getElementById('hintButton');
+            if (gameState.hintCooldown > 0) {
+                const secondsLeft = Math.ceil(gameState.hintCooldown / 1000);
+                button.textContent = `Hint (${secondsLeft}s)`;
+                button.disabled = true;
+            } else {
+                button.textContent = 'Get Hint';
+                button.disabled = false;
+            }
+        }
+
+        // ===========================================
+        // AUDIO SYSTEM
+        // ===========================================
+        function initAudio() {
+            try {
+                gameState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Load background music
+                if (gameState.backgroundMusic) {
+                    gameState.backgroundMusic.loop = true;
+                    gameState.backgroundMusic.volume = 0.3;
+                }
+            } catch (error) {
+                console.log('Audio not supported');
+            }
+        }
+
+        function playSound(soundName) {
+            if (!gameState.audioContext) return;
+            
+            try {
+                let audioFile = null;
+                let volume = 0.5;
+                
+                switch (soundName) {
+                    case 'spark':
+                        audioFile = gameState.sparkSound;
+                        volume = 0.7;
+                        break;
+                    case 'death':
+                        audioFile = gameState.deathSound;
+                        volume = 0.8;
+                        break;
+                }
+                
+                if (audioFile) {
+                    const audio = audioFile.cloneNode();
+                    audio.volume = volume;
+                    audio.play().catch(e => console.log('Audio play failed:', e));
+                }
+            } catch (error) {
+                console.log('Audio playback failed:', error);
+            }
+        }
+
+        function playBackgroundMusic() {
+            if (gameState.backgroundMusic) {
+                gameState.backgroundMusic.play().catch(e => console.log('Background music failed:', e));
+            }
+        }
+
+        function stopBackgroundMusic() {
+            if (gameState.backgroundMusic) {
+                gameState.backgroundMusic.pause();
+                gameState.backgroundMusic.currentTime = 0;
+            }
+        }
+
+        // ===========================================
+        // START GAME
+        // ===========================================
+        window.addEventListener('load', () => {
+            initGame();
+            
+            // Update movement in game loop
+            setInterval(updateMovement, 1000 / 60);
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            // Reposition torches randomly for new screen size with proper spacing
+            if (gameState.torches.length > 0) {
+                const margin = 100;
+                const minDistance = 150;
+                
+                for (let i = 0; i < gameState.torches.length; i++) {
+                    let attempts = 0;
+                    let x, y;
+                    let validPosition = false;
+                    
+                    while (!validPosition && attempts < 50) {
+                        x = margin + Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 2 * margin);
+                        y = margin + Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 2 * margin);
+                        
+                        // Check distance from other torches
+                        validPosition = true;
+                        for (let j = 0; j < i; j++) {
+                            const distance = Math.sqrt((x - gameState.torches[j].x) ** 2 + (y - gameState.torches[j].y) ** 2);
+                            if (distance < minDistance) {
+                                validPosition = false;
+                                break;
+                            }
+                        }
+                        attempts++;
+                    }
+                    
+                    gameState.torches[i].x = x;
+                    gameState.torches[i].y = y;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
