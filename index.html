@@ -174,6 +174,14 @@
             <div id="level">Level: 1</div>
             <div id="score">Score: 0</div>
             <div id="message">Use WASD or Arrow Keys to move, Space to ignite nearby torches</div>
+            <div style="margin-top:8px;">
+                <label for="difficultySelect" style="font-size:12px;margin-right:6px;">Difficulty:</label>
+                <select id="difficultySelect" onchange="onDifficultyChange(this.value)" style="background: rgba(0,0,0,0.6); color:#fff; border:1px solid #ff6600; border-radius:4px; padding:2px 6px; font-family: inherit; font-size:12px;">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
         </div>
         
         <div id="instructions">
@@ -186,6 +194,12 @@
             High Score: <span id="highScoreValue">0</span>
         </div>
         
+        <div id="levelComplete" style="position:absolute; top:50%; left:50%; transform: translate(-50%, -50%); text-align:center; z-index: 210; background: rgba(0,0,0,0.85); padding: 28px; border-radius: 10px; border: 2px solid #ffcc00; display:none;">
+            <h2 style="color:#ffcc00; margin-bottom: 14px; font-size:24px;">VICTORY!</h2>
+            <p style="color:#ffaa00; margin-bottom: 10px; font-size:14px;">“But the deeper you go, the darker it gets...”</p>
+            <button onclick="goToNextLevel()" style="background:#ffcc00; color:#000; border:none; padding:10px 20px; font-size:16px; border-radius:6px; cursor:pointer; font-family:inherit;">Next Level</button>
+        </div>
+
         <div id="gameOver">
             <h2 id="gameOverTitle">Game Over</h2>
             <p id="gameOverMessage">Your flame has been extinguished...</p>
@@ -240,15 +254,24 @@
             hintCooldownTime: 10000,
             level: 1,
             totalLevels: 2,
-            backgroundImage: null
+            backgroundImage: null,
+            difficulty: 'medium'
+        };
+
+        const DIFFICULTY_PARAMS = {
+            easy:   { scale: 0.4, igniteCost: 8 },   // much slower drain, cheaper ignite
+            medium: { scale: 1.0, igniteCost: 12 },  // baseline
+            hard:   { scale: 1.6, igniteCost: 18 }   // faster drain, costlier ignite
         };
 
         function applyLevelConfig(levelIndex) {
             const cfg = LEVELS[levelIndex - 1];
             if (!cfg) return;
             GAME_CONFIG.NUM_TORCHES = cfg.numTorches;
-            GAME_CONFIG.HEALTH_DRAIN_RATE = cfg.healthDrainRate;
-            GAME_CONFIG.DARKNESS_DRAIN_RATE = cfg.darknessDrainRate;
+            const params = DIFFICULTY_PARAMS[gameState.difficulty] || DIFFICULTY_PARAMS.medium;
+            GAME_CONFIG.HEALTH_DRAIN_RATE = cfg.healthDrainRate * params.scale;
+            GAME_CONFIG.DARKNESS_DRAIN_RATE = cfg.darknessDrainRate * params.scale;
+            GAME_CONFIG.IGNITE_COST = params.igniteCost;
             const levelEl = document.getElementById('level');
             if (levelEl) levelEl.textContent = `Level: ${cfg.level}`;
         }
@@ -284,6 +307,24 @@
             // Generate torches for this level
             generateTorches(GAME_CONFIG.NUM_TORCHES);
             showMessage(`Level ${levelIndex} started`);
+            // Ensure overlays hidden and game running
+            const lc = document.getElementById('levelComplete');
+            if (lc) lc.style.display = 'none';
+            document.getElementById('gameOver').style.display = 'none';
+            gameState.gameRunning = true;
+        }
+
+        function showLevelComplete() {
+            gameState.gameRunning = false;
+            const lc = document.getElementById('levelComplete');
+            if (lc) lc.style.display = 'block';
+        }
+
+        function goToNextLevel() {
+            const next = gameState.level + 1;
+            if (next <= gameState.totalLevels) {
+                startLevel(next);
+            }
         }
 
         class Particle {
@@ -689,6 +730,9 @@
 
             // Load background image
             loadBackgroundImage();
+
+            // Load difficulty
+            loadDifficulty();
             gameState.canvas.addEventListener('click', (e) => {
                 if (!gameState.gameRunning) return;
                 
@@ -712,6 +756,24 @@
             }, 1000);
         }
 
+        function loadDifficulty() {
+            const saved = localStorage.getItem('lastFlameDifficulty');
+            if (saved && (saved === 'easy' || saved === 'medium' || saved === 'hard')) {
+                gameState.difficulty = saved;
+            }
+            const sel = document.getElementById('difficultySelect');
+            if (sel) sel.value = gameState.difficulty;
+        }
+
+        function onDifficultyChange(value) {
+            if (value !== 'easy' && value !== 'medium' && value !== 'hard') return;
+            gameState.difficulty = value;
+            localStorage.setItem('lastFlameDifficulty', value);
+            // Restart current level to apply settings and "refresh" the game
+            startLevel(gameState.level);
+            showMessage(`Difficulty set to ${value}. Level refreshed.`);
+        }
+
         function loadBackgroundImage() {
             const img = new Image();
             img.onload = () => {
@@ -728,7 +790,7 @@
             gameState.backgroundMusic = new Audio('./assets/ember_loop.mp3');
             gameState.backgroundMusic.loop = true;
             gameState.backgroundMusic.volume = 0.3;
-            gameState.sparkSound = new Audio('./assets/spark.wav');
+            gameState.sparkSound = new Audio('./assets/spark.mp3');
             gameState.deathSound = new Audio('./assets/death.wav');
             initAudio();
         }
@@ -840,7 +902,7 @@
             const allTorchesLit = gameState.torches.every(torch => torch.lit);
             if (allTorchesLit) {
                 if (gameState.level < gameState.totalLevels) {
-                    startLevel(gameState.level + 1);
+                    showLevelComplete();
                 } else {
                     gameOver("You have illuminated the darkness! Victory!");
                 }
@@ -902,21 +964,21 @@
                 );
             } else {
                 // Fallback gradient background
-                const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
-                gradient.addColorStop(0, '#1a0a0a');
-                gradient.addColorStop(0.5, '#0a0a1a');
-                gradient.addColorStop(1, '#000');
-                
-                ctx.fillStyle = gradient;
-                ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
-                
-                ctx.fillStyle = 'rgba(100, 50, 0, 0.1)';
-                for (let i = 0; i < 20; i++) {
-                    const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
-                    const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
-                    ctx.beginPath();
-                    ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2);
-                    ctx.fill();
+            const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
+            gradient.addColorStop(0, '#1a0a0a');
+            gradient.addColorStop(0.5, '#0a0a1a');
+            gradient.addColorStop(1, '#000');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+            
+            ctx.fillStyle = 'rgba(100, 50, 0, 0.1)';
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * GAME_CONFIG.CANVAS_WIDTH;
+                const y = Math.random() * GAME_CONFIG.CANVAS_HEIGHT;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.random() * 3, 0, Math.PI * 2);
+                ctx.fill();
                 }
             }
         }
